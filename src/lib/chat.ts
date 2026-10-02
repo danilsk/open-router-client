@@ -3,6 +3,7 @@ import { chatStream, generateImages, type ChatMessage, type Citation, type Conte
 import { audioFormatOf, dataUrlToBlob } from './audio';
 import { db, uid, type Attachment, type Chat, type Message } from './db';
 import { accepts, reasoningParam, useCatalog, type ModelInfo } from './models';
+import { holdLock } from './locks';
 import { getSettings } from './store';
 import { transcribe } from './stt';
 import { toastError } from './toast';
@@ -88,6 +89,7 @@ export async function runAssistant(chat: Chat, opts: { image?: { model: string; 
   controllers.set(chat.id, ac);
   useRunning.setState({ [chat.id]: true });
   const id = uid();
+  const release = holdLock(`orc-stream:${id}`);
   const now = await nextTime(chat.id);
   const model = useCatalog.getState().byId.get(chat.model);
   const base: Message = { id, chatId: chat.id, role: 'assistant', createdAt: now, text: '', status: 'streaming', model: opts.image?.model ?? chat.model };
@@ -159,6 +161,7 @@ export async function runAssistant(chat: Chat, opts: { image?: { model: string; 
     await db.messages.update(id, { text, reasoning, status: aborted ? 'done' : 'error', error: aborted ? undefined : (e as Error).message });
     if (!aborted) toastError(e);
   } finally {
+    release();
     if (controllers.get(chat.id) === ac) {
       controllers.delete(chat.id);
       useRunning.setState({ [chat.id]: false });

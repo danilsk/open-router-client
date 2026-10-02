@@ -19,7 +19,7 @@ export async function jsonCall<T>(
   schema: object,
   system: string,
   messages: ChatMessage[],
-  opts: { signal?: AbortSignal; temperature?: number } = {},
+  opts: { signal?: AbortSignal; temperature?: number; required?: string[] } = {},
 ): Promise<JsonResult<T>> {
   const t0 = performance.now();
   const sys: ChatMessage = {
@@ -41,9 +41,30 @@ export async function jsonCall<T>(
       r = await chat(body(false), opts.signal);
     } else throw e;
   }
-  const data = parseLoose<T>(r.text);
-  if (!data || typeof data !== 'object') throw new Error(`The model did not return valid JSON: ${r.text.slice(0, 160)}`);
-  return { data, usage: r.usage, ms: performance.now() - t0 };
+  const raw = parseLoose(r.text);
+  if (!raw || typeof raw !== 'object') throw new Error(`The model did not return valid JSON: ${r.text.slice(0, 160)}`);
+  const data = conform(raw, schema) as Record<string, unknown>;
+  const missing = (opts.required ?? []).filter((k) => {
+    const v = data[k];
+    return v == null || v === '' || (Array.isArray(v) && !v.length);
+  });
+  if (missing.length) throw new Error(`The model's answer was incomplete (missing ${missing.join(', ')}). Please try again.`);
+  return { data: data as T, usage: r.usage, ms: performance.now() - t0 };
+}
+
+function conform(v: unknown, s: any): unknown {
+  if (s.type === 'string') return typeof v === 'string' ? v : v == null ? '' : String(v);
+  if (s.type === 'number') {
+    const n = typeof v === 'number' ? v : parseFloat(String(v));
+    return Number.isFinite(n) ? n : 0;
+  }
+  if (s.type === 'boolean') return v === true || v === 'true';
+  if (s.type === 'array') return Array.isArray(v) ? v.filter((x) => x != null).map((x) => conform(x, s.items)) : [];
+  if (s.type === 'object') {
+    const o = v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+    return Object.fromEntries(Object.entries(s.properties).map(([k, ps]) => [k, conform(o[k], ps)]));
+  }
+  return v;
 }
 
 const str = { type: 'string' } as const;

@@ -83,6 +83,7 @@ export function VoicePicker({
             <ModelButton
               role="tts"
               value={isBrowser ? '' : value.model}
+              placeholder="Using the device voice — pick a model"
               onChange={(id) => {
                 const nm = useCatalog.getState().byId.get(id);
                 onChange({ ...value, model: id, voice: nm?.voices[0] });

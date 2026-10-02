@@ -239,7 +239,7 @@ export default function TranslatorPage() {
             <input
               value={typed}
               onChange={(e) => setTyped(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && sendTyped()}
+              onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && sendTyped()}
               placeholder={`Type in ${s.myLanguage} — it will be translated and spoken`}
               className={clsx(inputCls, 'h-10 py-2')}
             />
@@ -300,7 +300,7 @@ function TheirCard({ u }: { u: Utterance }) {
   return (
     <div className="rounded-2xl border border-line bg-surface p-4">
       <div className="mb-2 flex items-center gap-2 text-xs text-muted">
-        <span>{u.language ? `${flagOf(u.language)} ${u.language}` : 'Listening…'}</span>
+        <span>{u.language ? `${flagOf(u.language)} ${u.language}` : u.status === 'error' ? 'Not translated' : 'Listening…'}</span>
         {u.needsReply && <Badge tone="accent">Expects a reply</Badge>}
         <span className="flex-1" />
         {u.ms != null && <span className="tabular-nums">{(u.ms / 1000).toFixed(1)}s</span>}
@@ -326,6 +326,9 @@ function TheirCard({ u }: { u: Utterance }) {
               <RotateCcw className="size-3.5" /> Retry
             </button>
           )}
+          <button type="button" onClick={() => db.utterances.delete(u.id)} className="text-muted hover:text-fg">
+            Dismiss
+          </button>
         </div>
       )}
       {u.status === 'done' && (

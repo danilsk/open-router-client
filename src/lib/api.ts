@@ -1,6 +1,6 @@
 import { getSettings } from './store';
 import { pcm16ToWav } from './audio';
-import { record } from './ledger';
+import { currentFeature, record } from './ledger';
 
 export const API = 'https://openrouter.ai/api/v1';
 
@@ -87,6 +87,7 @@ async function get<T>(path: string, auth = true): Promise<T> {
 }
 
 export async function* chatStream(body: Record<string, unknown>, signal?: AbortSignal): AsyncGenerator<StreamEvent> {
+  const feature = currentFeature();
   const r = await post('/chat/completions', { ...body, stream: true }, signal);
   const reader = r.body!.getReader();
   const dec = new TextDecoder();
@@ -128,13 +129,13 @@ export async function* chatStream(body: Record<string, unknown>, signal?: AbortS
         if (ch?.finish_reason === 'error') throw new ApiError(500, 'The model stopped with an error');
         if (j.usage) {
           logged = true;
-          record({ kind: 'chat', model: j.model ?? String(body.model), cost: j.usage.cost, genId, tokensIn: j.usage.prompt_tokens, tokensOut: j.usage.completion_tokens });
+          record({ feature, kind: 'chat', model: j.model ?? String(body.model), cost: j.usage.cost, genId, tokensIn: j.usage.prompt_tokens, tokensOut: j.usage.completion_tokens });
           yield { type: 'usage', usage: j.usage, model: j.model };
         }
       }
     }
   } finally {
-    if (!logged && genId) record({ kind: 'chat', model: String(body.model), genId });
+    if (!logged && genId) record({ feature, kind: 'chat', model: String(body.model), genId });
   }
 }
 
@@ -145,10 +146,11 @@ export interface ChatResult {
 }
 
 export async function chat(body: Record<string, unknown>, signal?: AbortSignal): Promise<ChatResult> {
+  const feature = currentFeature();
   const r = await post('/chat/completions', { ...body, stream: false }, signal);
   const j = await r.json();
   if (j.error) throw new ApiError(j.error.code ?? 500, j.error.message);
-  record({ kind: 'chat', model: j.model ?? String(body.model), cost: j.usage?.cost, genId: j.id, tokensIn: j.usage?.prompt_tokens, tokensOut: j.usage?.completion_tokens });
+  record({ feature, kind: 'chat', model: j.model ?? String(body.model), cost: j.usage?.cost, genId: j.id, tokensIn: j.usage?.prompt_tokens, tokensOut: j.usage?.completion_tokens });
   const msg = j.choices?.[0]?.message;
   let text = msg?.content ?? '';
   if (Array.isArray(text)) text = text.map((p: any) => p.text ?? '').join('');
@@ -166,6 +168,7 @@ export interface SpeechReq {
 const pcmOnly = (model: string) => model.startsWith('google/') && model.includes('tts');
 
 export async function speech(req: SpeechReq, signal?: AbortSignal): Promise<Blob> {
+  const feature = currentFeature();
   const send = (format: 'mp3' | 'pcm') =>
     fetch(API + '/audio/speech', {
       method: 'POST',
@@ -183,7 +186,7 @@ export async function speech(req: SpeechReq, signal?: AbortSignal): Promise<Blob
     }
   }
   if (!r.ok) await fail(r);
-  record({ kind: 'tts', model: req.model, chars: req.input.length, genId: r.headers.get('x-generation-id') ?? undefined });
+  record({ feature, kind: 'tts', model: req.model, chars: req.input.length, genId: r.headers.get('x-generation-id') ?? undefined });
   const bytes = new Uint8Array(await r.arrayBuffer());
   const ctype = r.headers.get('content-type') ?? '';
   if (format === 'pcm' || ctype.includes('pcm')) {
@@ -201,9 +204,10 @@ export async function transcribeEndpoint(
   language?: string,
   signal?: AbortSignal,
 ): Promise<{ text: string; usage?: Usage }> {
+  const feature = currentFeature();
   const r = await post('/audio/transcriptions', { model, input_audio: { data: b64, format }, ...(language ? { language } : {}) }, signal);
   const j = await r.json();
-  record({ kind: 'stt', model, cost: j.usage?.cost, tokensIn: j.usage?.input_tokens, tokensOut: j.usage?.output_tokens });
+  record({ feature, kind: 'stt', model, cost: j.usage?.cost, tokensIn: j.usage?.input_tokens, tokensOut: j.usage?.output_tokens });
   return { text: j.text ?? '', usage: j.usage };
 }
 
@@ -218,9 +222,10 @@ export interface ImageReq {
 }
 
 export async function generateImages(req: ImageReq, signal?: AbortSignal): Promise<{ images: string[]; usage?: Usage }> {
+  const feature = currentFeature();
   const r = await post('/images', req, signal);
   const j = await r.json();
-  record({ kind: 'image', model: req.model, cost: j.usage?.cost, tokensOut: j.usage?.completion_tokens });
+  record({ feature, kind: 'image', model: req.model, cost: j.usage?.cost, tokensOut: j.usage?.completion_tokens });
   const images = (j.data ?? []).map((d: any) =>
     d.b64_json ? `data:${d.media_type ?? 'image/png'};base64,${d.b64_json}` : d.url,
   );

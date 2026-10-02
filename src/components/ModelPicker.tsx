@@ -96,7 +96,7 @@ export function ModelList({
     const by: Record<Sort, (a: ModelInfo, b: ModelInfo) => number> = {
       popular: (a, b) => popularity(b, role, stats) - popularity(a, role, stats) || b.created - a.created,
       newest: (a, b) => b.created - a.created,
-      cheapest: (a, b) => a.pricing.prompt + a.pricing.completion - (b.pricing.prompt + b.pricing.completion),
+      cheapest: (a, b) => Number(a.dynamic) - Number(b.dynamic) || a.pricing.prompt + a.pricing.completion - (b.pricing.prompt + b.pricing.completion),
       smartest: (a, b) => (intelligence(b, stats) ?? -1) - (intelligence(a, stats) ?? -1),
       context: (a, b) => b.context - a.context,
     };
@@ -266,12 +266,14 @@ export function ModelButton({
   onChange,
   className,
   compact,
+  placeholder = 'Choose a model',
 }: {
   role: ModelRole;
   value: string;
   onChange: (id: string) => void;
   className?: string;
   compact?: boolean;
+  placeholder?: string;
 }) {
   const [open, setOpen] = useState(false);
   const m = useCatalog((s) => s.byId.get(value));
@@ -287,7 +289,7 @@ export function ModelButton({
         )}
       >
         <span className="min-w-0 flex-1 truncate">
-          {m?.name ?? value.split('/').pop()}
+          {m?.name ?? (value ? value.split('/').pop() : <span className="text-muted">{placeholder}</span>)}
           {!compact && m && <span className="ml-2 text-xs text-muted">{m.providerName}</span>}
         </span>
         <ChevronDown className="size-3.5 shrink-0 text-muted" />

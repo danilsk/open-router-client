@@ -2,6 +2,7 @@ import { audioPart, jsonCall, schemas, type Interpretation } from './ai';
 import type { ChatMessage, ContentPart } from './api';
 import { decodeMono } from './audio';
 import { db, uid, type Utterance } from './db';
+import { holdLock } from './locks';
 import { isNonLatin } from './languages';
 import { getSettings } from './store';
 import { transcribe } from './stt';
@@ -54,7 +55,9 @@ export async function processThem(sessionId: string, blob: Blob) {
   const s = getSettings();
   const t = s.translator;
   const id = uid();
+  const release = holdLock(`orc-utt:${id}`);
   clips.set(id, blob);
+  while (clips.size > 30) clips.delete(clips.keys().next().value!);
   const base: Utterance = { id, sessionId, createdAt: Date.now(), who: 'them', status: 'pending' };
   await db.utterances.add(base);
   if (t.quickTranscript) {
@@ -89,6 +92,8 @@ export async function processThem(sessionId: string, blob: Blob) {
     if (t.prefetch) suggestions.forEach((x) => prefetch(x.text, t.voice));
   } catch (e) {
     await db.utterances.update(id, { status: 'error', error: (e as Error).message });
+  } finally {
+    release();
   }
 }
 
@@ -106,6 +111,7 @@ export async function processMine(sessionId: string, input: Blob | string) {
   const target = t.theirLanguage !== 'auto' ? t.theirLanguage : await lastTheirLanguage(sessionId);
   if (!target) return toastError(new Error("Pick the other person's language first (or let them speak once)."));
   const id = uid();
+  const release = holdLock(`orc-utt:${id}`);
   await db.utterances.add({ id, sessionId, createdAt: Date.now(), who: 'me', status: 'pending', language: target });
   try {
     const ctx = await context(sessionId);
@@ -117,7 +123,7 @@ export async function processMine(sessionId: string, input: Blob | string) {
         : [{ type: 'text', text: `${ctx}Translate what the user says in this clip.` }, await audioPart(input)];
     const messages: ChatMessage[] = [{ role: 'user', content }];
     const model = typeof input === 'string' ? s.chatModel : t.listenModel;
-    const r = await jsonCall<{ transcript: string; translation: string; transliteration: string }>(model, 'translation', schemas.translateMine, system, messages);
+    const r = await jsonCall<{ transcript: string; translation: string; transliteration: string }>(model, 'translation', schemas.translateMine, system, messages, { required: ['translation'] });
     await db.utterances.update(id, {
       status: 'done',
       transcript: r.data.transcript || (typeof input === 'string' ? input : ''),
@@ -129,6 +135,8 @@ export async function processMine(sessionId: string, input: Blob | string) {
     if (t.autoSpeakMine && r.data.translation) speak(r.data.translation, t.voice, `utt:${id}`);
   } catch (e) {
     await db.utterances.update(id, { status: 'error', error: (e as Error).message });
+  } finally {
+    release();
   }
 }
 

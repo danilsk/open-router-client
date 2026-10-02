@@ -1,5 +1,6 @@
-import { lazy, Suspense, useEffect } from 'react';
-import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { lazy, Suspense, useEffect, type ReactNode } from 'react';
+import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { KeyGate } from './components/KeyGate';
 import { Layout } from './components/Layout';
 import { Spinner } from './components/ui';
@@ -29,6 +30,11 @@ function useTheme() {
   }, [theme]);
 }
 
+function RouteBoundary({ children }: { children: ReactNode }) {
+  const { pathname } = useLocation();
+  return <ErrorBoundary resetKey={pathname}>{children}</ErrorBoundary>;
+}
+
 export default function App() {
   useTheme();
   const apiKey = useSettings((s) => s.apiKey);
@@ -40,26 +46,28 @@ export default function App() {
     <HashRouter>
       <KeyGate>
         <Layout>
-          <Suspense
-            fallback={
-              <div className="flex h-full items-center justify-center">
-                <Spinner className="size-6" />
-              </div>
-            }
-          >
-            <Routes>
-              <Route path="/" element={<Navigate to="/chat" replace />} />
-              <Route path="/chat" element={<ChatPage />} />
-              <Route path="/chat/:id" element={<ChatPage />} />
-              <Route path="/translator" element={<TranslatorPage />} />
-              <Route path="/learn" element={<TeacherPage />} />
-              <Route path="/accent" element={<AccentPage />} />
-              <Route path="/models" element={<ModelsPage />} />
-              <Route path="/settings" element={<SettingsPage />} />
-              <Route path="/usage" element={<UsagePage />} />
-              <Route path="*" element={<Navigate to="/chat" replace />} />
-            </Routes>
-          </Suspense>
+          <RouteBoundary>
+            <Suspense
+              fallback={
+                <div className="flex h-full items-center justify-center">
+                  <Spinner className="size-6" />
+                </div>
+              }
+            >
+              <Routes>
+                <Route path="/" element={<Navigate to="/chat" replace />} />
+                <Route path="/chat" element={<ChatPage />} />
+                <Route path="/chat/:id" element={<ChatPage />} />
+                <Route path="/translator" element={<TranslatorPage />} />
+                <Route path="/learn" element={<TeacherPage />} />
+                <Route path="/accent" element={<AccentPage />} />
+                <Route path="/models" element={<ModelsPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/usage" element={<UsagePage />} />
+                <Route path="*" element={<Navigate to="/chat" replace />} />
+              </Routes>
+            </Suspense>
+          </RouteBoundary>
         </Layout>
       </KeyGate>
     </HashRouter>

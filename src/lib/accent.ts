@@ -36,7 +36,7 @@ export async function makeSet(acc: Accent, kind: 'sentences' | 'pairs', avoid: s
 Create 6 practice items: ${what}. For each item give: text, ipa (broad IPA transcription as pronounced in this accent), focus (the feature being trained, 2–5 words), tip (one concrete articulation tip in ${my}: tongue, lips, vowel length, stress or intonation).`;
   const r = await jsonCall<{ items: AccentItem[] }>(getSettings().accent.listenModel, 'accent_set', schemas.accentSet, system, [
     { role: 'user', content: avoid.length ? `Do not repeat: ${avoid.slice(-18).join(' | ')}` : 'Create the set.' },
-  ], { temperature: 1 });
+  ], { temperature: 1, required: ['items'] });
   return (r.data.items ?? []).filter((i) => i?.text);
 }
 
@@ -61,7 +61,7 @@ Judge only pronunciation and accent, not grammar. Be honest but encouraging. Wri
       ]
     : [{ type: 'text', text: `Target: "${item.text}"${item.focus ? ` (focus: ${item.focus})` : ''}. This is the learner's attempt.` }, await audioPart(mine)];
   const [judged, machine] = await Promise.all([
-    jsonCall<AccentEval>(a.listenModel, 'accent_eval', schemas.accentEval, system, [{ role: 'user', content }]),
+    jsonCall<AccentEval>(a.listenModel, 'accent_eval', schemas.accentEval, system, [{ role: 'user', content }], { required: ['summary'] }),
     a.machineCheck ? transcribe(mine, { model: s.sttModel, language: acc.language }).catch(() => null) : Promise.resolve(null),
   ]);
   return { ...judged.data, machine, cost: judged.usage?.cost };
@@ -76,7 +76,7 @@ export async function suggestContrast(language: string, list: Accent[]): Promise
     schemas.accentSentence,
     `You are a phonetician. Write one natural, everyday ${language} sentence (8–14 words) whose pronunciation differs as much as possible between these accents:\n${describe(list)}`,
     [{ role: 'user', content: 'Write the sentence.' }],
-    { temperature: 1 },
+    { temperature: 1, required: ['sentence'] },
   );
   return r.data.sentence;
 }
@@ -94,6 +94,7 @@ For the sentence the user gives:
 - summary: two sentences on how to tell these accents apart.
 Write notes and descriptions in ${my}.`,
     [{ role: 'user', content: text }],
+    { required: ['accents'] },
   );
   return { ...r.data, cost: r.usage?.cost };
 }
@@ -107,6 +108,7 @@ export async function closestAccent(list: Accent[], text: string, audio: Blob) {
     `You are a phonetician. The speaker read the sentence "${text}". Decide which of these accents their pronunciation is closest to:\n${describe(list)}
 closest = the accent name exactly as written above; scores = 0–100 similarity for every accent; evidence = 1–2 sentences in ${my} naming the sounds that decided it.`,
     [{ role: 'user', content: [{ type: 'text', text: 'Here is the recording.' }, await audioPart(audio)] }],
+    { required: ['closest'] },
   );
   return r.data;
 }

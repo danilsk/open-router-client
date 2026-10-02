@@ -150,18 +150,30 @@ body {
   border-color: var(--line);
 }
 
+:root {
+  --hl-keyword: #8a2bb0;
+  --hl-string: #2d6e2a;
+  --hl-number: #8a5a00;
+  --hl-title: #2357c9;
+}
+.dark {
+  --hl-keyword: #d19cf0;
+  --hl-string: #a5d38a;
+  --hl-number: #e3b07c;
+  --hl-title: #82bdf5;
+}
 .hljs-keyword,
 .hljs-selector-tag,
 .hljs-built_in {
-  color: #c678dd;
+  color: var(--hl-keyword);
 }
 .hljs-string,
 .hljs-attr {
-  color: #98c379;
+  color: var(--hl-string);
 }
 .hljs-number,
 .hljs-literal {
-  color: #d19a66;
+  color: var(--hl-number);
 }
 .hljs-comment {
   color: var(--muted);
@@ -169,10 +181,7 @@ body {
 }
 .hljs-title,
 .hljs-function {
-  color: #61afef;
-}
-:not(.dark) .hljs-string {
-  color: #3d8b2f;
+  color: var(--hl-title);
 }
 
 @keyframes pulse-ring {

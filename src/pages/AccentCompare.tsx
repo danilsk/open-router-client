@@ -147,7 +147,7 @@ export function AccentCompare() {
             <input
               value={newAccent}
               onChange={(e) => setNewAccent(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && addCustom()}
+              onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && addCustom()}
               placeholder={`Add another ${language} accent (e.g. ${language === 'English' ? 'New Zealand' : 'regional'})`}
               className={clsx(inputCls, 'h-9 py-1.5 text-[13px]')}
             />

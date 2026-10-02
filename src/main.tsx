@@ -4,11 +4,13 @@ import { registerSW } from 'virtual:pwa-register';
 import App from './App';
 import './index.css';
 import './lib/install';
+import { recoverInterrupted } from './lib/db';
 import { completeLogin } from './lib/pkce';
 import { useSettings } from './lib/store';
 import { toast, toastError } from './lib/toast';
 
 registerSW({ immediate: true });
+recoverInterrupted().catch(() => {});
 
 completeLogin()
   .then((key) => {

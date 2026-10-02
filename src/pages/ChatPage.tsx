@@ -15,10 +15,10 @@ import { Composer, type ImageMode } from './chat/Composer';
 import { MessageView } from './chat/MessageView';
 
 const STARTERS = [
-  'Explain how vaccines train the immune system',
-  'Plan a 3-day trip to Tbilisi',
-  "What's new in tech this week?",
-  'Draw a cozy reading nook in watercolor',
+  { text: 'Explain how vaccines train the immune system' },
+  { text: 'Plan a 3-day trip to Tbilisi' },
+  { text: "What's new in tech this week?", search: true },
+  { text: 'Draw a cozy reading nook in watercolor', image: true },
 ];
 
 export default function ChatPage() {
@@ -79,22 +79,35 @@ export default function ChatPage() {
     } else await runAssistant(c);
   };
 
-  const send = async (text: string, atts: Attachment[]) => {
-    if (!chat) return;
-    if (image.on && !text) return toast('Describe the image you want.', 'error');
-    if (!image.on) {
+  const sending = useRef(false);
+  const send = async (text: string, atts: Attachment[], asImage = image.on, extra: Partial<Chat> = {}): Promise<boolean> => {
+    if (!chat || sending.current) return false;
+    if (asImage && !text) {
+      toast('Describe the image you want.', 'error');
+      return false;
+    }
+    if (!asImage) {
       const err = checkAttachments(atts, model);
-      if (err) return toast(err, 'error');
+      if (err) {
+        toast(err, 'error');
+        return false;
+      }
     }
-    const c = { ...chat };
-    if (!id) {
-      await db.chats.add(c);
-      nav(`/chat/${c.id}`, { replace: true });
-      setDraft(newChat());
+    sending.current = true;
+    try {
+      const c = { ...(id ? ((await db.chats.get(id)) ?? chat) : chat), ...extra };
+      if (!id) {
+        await db.chats.add(c);
+        nav(`/chat/${c.id}`, { replace: true });
+        setDraft(newChat());
+      } else if (Object.keys(extra).length) await db.chats.update(c.id, extra);
+      stick.current = true;
+      await sendUser(c, text, atts);
+      void run(c, text, atts, asImage);
+      return true;
+    } finally {
+      sending.current = false;
     }
-    stick.current = true;
-    await sendUser(c, text, atts);
-    await run(c, text, atts, image.on);
   };
 
   const regenerate = async (m: Message) => {
@@ -108,9 +121,10 @@ export default function ChatPage() {
   const edit = async (m: Message, text: string) => {
     if (!chat) return;
     stopChat(chat.id);
+    const next = messages.find((x) => x.createdAt > m.createdAt && x.role === 'assistant');
     await db.messages.update(m.id, { text });
     await deleteFrom(chat.id, m.createdAt + 1);
-    await run(chat, text, m.attachments ?? [], false);
+    await run(chat, text, m.attachments ?? [], !!next?.imagePrompt, m.createdAt);
   };
 
   if (!chat) return null;
@@ -173,7 +187,12 @@ export default function ChatPage() {
               ))}
             </div>
           ) : (
-            <Welcome onPick={(t) => send(t, [])} />
+            <Welcome
+              onPick={(s) => {
+                if (s.image) setImage((i) => ({ ...i, on: true }));
+                send(s.text, [], !!s.image, s.search ? { webSearch: true } : {});
+              }}
+            />
           )}
         </div>
         <Composer
@@ -200,7 +219,7 @@ export default function ChatPage() {
   );
 }
 
-function Welcome({ onPick }: { onPick: (t: string) => void }) {
+function Welcome({ onPick }: { onPick: (s: (typeof STARTERS)[number]) => void }) {
   const tiles = [
     { to: '/translator', icon: Languages, title: 'Live translator', text: 'Listen, translate and get reply ideas' },
     { to: '/learn', icon: GraduationCap, title: 'Language teacher', text: 'Talk, listen and drill any language' },
@@ -212,8 +231,8 @@ function Welcome({ onPick }: { onPick: (t: string) => void }) {
       <p className="mt-1 text-sm text-muted">Attach photos, PDFs or audio, search the web, or switch on image mode.</p>
       <div className="mt-6 grid gap-2 sm:grid-cols-2">
         {STARTERS.map((s) => (
-          <button key={s} type="button" onClick={() => onPick(s)} className="rounded-2xl border border-line bg-surface px-4 py-3 text-left text-sm hover:bg-surface-2">
-            {s}
+          <button key={s.text} type="button" onClick={() => onPick(s)} className="rounded-2xl border border-line bg-surface px-4 py-3 text-left text-sm hover:bg-surface-2">
+            {s.text}
           </button>
         ))}
       </div>

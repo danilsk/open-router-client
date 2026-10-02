@@ -338,7 +338,7 @@ function TalkTab({ p }: { p: TeacherProfile }) {
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && text.trim() && !busy) {
+              if (e.key === 'Enter' && !e.nativeEvent.isComposing && text.trim() && !busy) {
                 go({ text: text.trim() });
                 setText('');
               }
@@ -378,7 +378,7 @@ function UserTurn({ t }: { t: TutorTurn }) {
               <Play className="size-4" />
             </button>
           )}
-          <span className="text-[15px]">{t.text}</span>
+          <span className="text-[15px] [overflow-wrap:anywhere]">{t.text}</span>
         </div>
       </div>
     </div>
@@ -508,7 +508,7 @@ function ListenTab({ p }: { p: TeacherProfile }) {
                   <input
                     value={answer}
                     onChange={(e) => setAnswer(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && check()}
+                    onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && check()}
                     placeholder="Type what you heard…"
                     className={clsx(inputCls, 'h-11')}
                   />

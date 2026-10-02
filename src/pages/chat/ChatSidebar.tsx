@@ -4,6 +4,7 @@ import { MessageSquarePlus, Pin, Search, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { IconButton, inputCls } from '../../components/ui';
+import { stopChat } from '../../lib/chat';
 import { db, deleteChat } from '../../lib/db';
 import { timeAgo } from '../../lib/text';
 
@@ -71,6 +72,7 @@ export function ChatSidebar({ activeId, onPick }: { activeId?: string; onPick?: 
               onClick={async (e) => {
                 e.stopPropagation();
                 if (!confirm(`Delete “${c.title}”?`)) return;
+                stopChat(c.id);
                 await deleteChat(c.id);
                 if (c.id === activeId) nav('/chat');
               }}

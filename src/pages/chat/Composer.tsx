@@ -53,7 +53,7 @@ export function Composer({
   hasLastImage,
   language,
 }: {
-  onSend: (text: string, atts: Attachment[]) => void;
+  onSend: (text: string, atts: Attachment[]) => Promise<boolean>;
   onStop: () => void;
   running: boolean;
   webSearch: boolean;
@@ -96,11 +96,14 @@ export function Composer({
     return () => window.removeEventListener('paste', onPaste);
   }, []);
 
-  const send = () => {
+  const sentAt = useRef(0);
+  const send = async () => {
     if (running || (!text.trim() && !atts.length)) return;
-    onSend(text.trim(), atts);
-    setText('');
-    setAtts([]);
+    sentAt.current = Date.now();
+    if (await onSend(text.trim(), atts)) {
+      setText('');
+      setAtts([]);
+    }
   };
 
   const onDictation = async (blob: Blob) => {
@@ -266,7 +269,7 @@ export function Composer({
                 )}
                 <button
                   type="button"
-                  onClick={running ? onStop : send}
+                  onClick={running ? () => Date.now() - sentAt.current > 600 && onStop() : send}
                   disabled={!running && !text.trim() && !atts.length}
                   aria-label={running ? 'Stop' : 'Send'}
                   className={clsx(

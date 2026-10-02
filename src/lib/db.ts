@@ -1,5 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type { Citation } from './api';
+import { heldLocks } from './locks';
 import type { ReasoningLevel, VoiceSel } from './store';
 
 export interface Attachment {
@@ -182,6 +183,17 @@ export async function kvGet<T>(key: string): Promise<{ value: T; updatedAt: numb
 
 export const kvSet = (key: string, value: unknown) => db.kv.put({ key, value, updatedAt: Date.now() });
 
+export async function recoverInterrupted() {
+  const held = await heldLocks();
+  await db.messages
+    .filter((m) => m.status === 'streaming' && !held.has(`orc-stream:${m.id}`))
+    .modify((m) => {
+      m.status = m.text ? 'done' : 'error';
+      if (!m.text) m.error = 'Interrupted: the page was closed or reloaded before the reply finished.';
+    });
+  await db.utterances.filter((u) => u.status === 'pending' && !held.has(`orc-utt:${u.id}`)).modify({ status: 'error', error: 'Interrupted: the page was reloaded.' });
+}
+
 export async function deleteChat(id: string) {
   await db.transaction('rw', db.chats, db.messages, async () => {
     await db.messages.where('chatId').equals(id).delete();
@@ -190,29 +202,42 @@ export async function deleteChat(id: string) {
 }
 
 export async function exportAll(): Promise<Blob> {
-  const [chats, messages, profiles, turns, cards, utterances] = await Promise.all([
+  const [chats, messages, profiles, turns, cards, utterances, attempts, ledger] = await Promise.all([
     db.chats.toArray(),
     db.messages.toArray(),
     db.profiles.toArray(),
     db.turns.toArray(),
     db.cards.toArray(),
     db.utterances.toArray(),
+    db.attempts.toArray(),
+    db.ledger.toArray(),
   ]);
-  const clean = turns.map(({ audio: _a, ...t }) => t);
-  return new Blob([JSON.stringify({ version: 1, exportedAt: Date.now(), chats, messages, profiles, turns: clean, cards, utterances })], {
-    type: 'application/json',
-  });
+  const data = {
+    version: 2,
+    exportedAt: Date.now(),
+    chats,
+    messages,
+    profiles,
+    turns: turns.map(({ audio: _a, ...t }) => t),
+    cards,
+    utterances,
+    attempts: attempts.map(({ audio: _a, ...t }) => t),
+    ledger,
+  };
+  return new Blob([JSON.stringify(data)], { type: 'application/json' });
 }
 
 export async function importAll(file: File) {
   const j = JSON.parse(await file.text());
-  await db.transaction('rw', [db.chats, db.messages, db.profiles, db.turns, db.cards, db.utterances], async () => {
+  await db.transaction('rw', [db.chats, db.messages, db.profiles, db.turns, db.cards, db.utterances, db.attempts, db.ledger], async () => {
     if (j.chats) await db.chats.bulkPut(j.chats);
     if (j.messages) await db.messages.bulkPut(j.messages);
     if (j.profiles) await db.profiles.bulkPut(j.profiles);
     if (j.turns) await db.turns.bulkPut(j.turns);
     if (j.cards) await db.cards.bulkPut(j.cards);
     if (j.utterances) await db.utterances.bulkPut(j.utterances);
+    if (j.attempts) await db.attempts.bulkPut(j.attempts);
+    if (j.ledger) await db.ledger.bulkPut(j.ledger);
   });
 }
 

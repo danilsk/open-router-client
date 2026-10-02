@@ -42,7 +42,7 @@ export async function tutorTurn(p: TeacherProfile, input: { text?: string; audio
 
   const userId = input ? uid() : null;
   if (userId) await db.turns.add({ id: userId, profileId: p.id, createdAt: Date.now(), role: 'user', text: userText || '🎤 …', audio: input?.audio });
-  const r = await jsonCall<TutorReply>(model, 'tutor_reply', schemas.tutor, tutorSystem(p), [...history, { role: 'user', content }], { temperature: 0.7 });
+  const r = await jsonCall<TutorReply>(model, 'tutor_reply', schemas.tutor, tutorSystem(p), [...history, { role: 'user', content }], { temperature: 0.7, required: ['reply'] });
   if (userId && r.data.heard) await db.turns.update(userId, { text: r.data.heard });
   const id = uid();
   await db.turns.add({ id, profileId: p.id, createdAt: Date.now(), role: 'tutor', text: r.data.reply, data: { ...r.data, cost: r.usage?.cost } });
@@ -59,6 +59,7 @@ Create ${purpose}. Match the level. Give sentence (in ${p.language}), transliter
   const msg = avoid.length ? `Avoid repeating these: ${avoid.slice(-12).join(' | ')}` : 'Create one.';
   const r = await jsonCall<{ sentence: string; transliteration: string; translation: string }>(profileModel(p), 'sentence', schemas.sentence, system, [{ role: 'user', content: msg }], {
     temperature: 1,
+    required: ['sentence'],
   });
   return r.data;
 }
@@ -71,7 +72,7 @@ export async function judgePronunciation(p: TeacherProfile, target: string, audi
 - summary: one or two encouraging, specific sentences in ${p.native} about what to improve.`;
   const r = await jsonCall<PronunciationResult>(profileModel(p), 'pronunciation', schemas.pronunciation, system, [
     { role: 'user', content: [{ type: 'text', text: `Target phrase: "${target}"` }, await audioPart(audio)] },
-  ]);
+  ], { required: ['summary'] });
   return r.data;
 }
 
@@ -93,9 +94,11 @@ export function grade(card: Card, q: 0 | 3 | 4 | 5): Card {
   return c;
 }
 
-export async function addCard(profileId: string, front: string, back: string, translit?: string) {
-  const exists = await db.cards.where('profileId').equals(profileId).and((c) => c.front.trim() === front.trim()).count();
-  if (exists) return false;
-  await db.cards.add({ id: uid(), profileId, front, back, translit: translit || undefined, due: Date.now(), interval: 0, ease: 2.5, reps: 0, lapses: 0, createdAt: Date.now() });
-  return true;
+export function addCard(profileId: string, front: string, back: string, translit?: string) {
+  return db.transaction('rw', db.cards, async () => {
+    const exists = await db.cards.where('profileId').equals(profileId).and((c) => c.front.trim() === front.trim()).count();
+    if (exists) return false;
+    await db.cards.add({ id: uid(), profileId, front, back, translit: translit || undefined, due: Date.now(), interval: 0, ease: 2.5, reps: 0, lapses: 0, createdAt: Date.now() });
+    return true;
+  });
 }
