@@ -1,4 +1,4 @@
-import { audioPart, jsonCall, schemas, type AccentEval, type AccentItem } from './ai';
+import { audioPart, jsonCall, schemas, type AccentComparison, type AccentEval, type AccentItem, type ClosestAccent } from './ai';
 import type { ContentPart } from './api';
 import { findAccent, type Accent } from './languages';
 import { regionVoice } from './models';
@@ -16,9 +16,9 @@ export function currentAccent(): Accent {
   return findAccent(a.accentId) ?? findAccent('en-US')!;
 }
 
-export function referenceVoice(acc: Accent): VoiceSel {
+export function referenceVoice(acc: Accent, ignoreOverride = false): VoiceSel {
   const o = getSettings().accent.voice;
-  if (o) return o;
+  if (o && !ignoreOverride) return o;
   if (acc.locale) {
     const v = regionVoice(acc.locale);
     if (v) return v;
@@ -65,4 +65,48 @@ Judge only pronunciation and accent, not grammar. Be honest but encouraging. Wri
     a.machineCheck ? transcribe(mine, { model: s.sttModel, language: acc.language }).catch(() => null) : Promise.resolve(null),
   ]);
   return { ...judged.data, machine, cost: judged.usage?.cost };
+}
+
+const describe = (list: Accent[]) => list.map((a) => `- ${a.label}: ${a.features}`).join('\n');
+
+export async function suggestContrast(language: string, list: Accent[]): Promise<string> {
+  const r = await jsonCall<{ sentence: string; why: string }>(
+    getSettings().accent.listenModel,
+    'accent_sentence',
+    schemas.accentSentence,
+    `You are a phonetician. Write one natural, everyday ${language} sentence (8–14 words) whose pronunciation differs as much as possible between these accents:\n${describe(list)}`,
+    [{ role: 'user', content: 'Write the sentence.' }],
+    { temperature: 1 },
+  );
+  return r.data.sentence;
+}
+
+export async function compareAccents(language: string, list: Accent[], text: string) {
+  const my = getSettings().myLanguage;
+  const r = await jsonCall<AccentComparison>(
+    getSettings().accent.listenModel,
+    'accent_compare',
+    schemas.accentCompare,
+    `You are a phonetician comparing accents of ${language}. Accents:\n${describe(list)}
+For the sentence the user gives:
+- accents: one entry per accent, in the same order, using exactly the accent names above. ipa = broad IPA of the whole sentence as said in that accent; notes = one short line on its overall sound.
+- differences: 3–6 concrete pronunciation differences that show up in this sentence (sounds, vowels, R, T, stress, intonation). For each: feature name, the words where you hear it, and for every accent a short description of how it is said there.
+- summary: two sentences on how to tell these accents apart.
+Write notes and descriptions in ${my}.`,
+    [{ role: 'user', content: text }],
+  );
+  return { ...r.data, cost: r.usage?.cost };
+}
+
+export async function closestAccent(list: Accent[], text: string, audio: Blob) {
+  const my = getSettings().myLanguage;
+  const r = await jsonCall<ClosestAccent>(
+    getSettings().accent.listenModel,
+    'closest_accent',
+    schemas.closest,
+    `You are a phonetician. The speaker read the sentence "${text}". Decide which of these accents their pronunciation is closest to:\n${describe(list)}
+closest = the accent name exactly as written above; scores = 0–100 similarity for every accent; evidence = 1–2 sentences in ${my} naming the sounds that decided it.`,
+    [{ role: 'user', content: [{ type: 'text', text: 'Here is the recording.' }, await audioPart(audio)] }],
+  );
+  return r.data;
 }

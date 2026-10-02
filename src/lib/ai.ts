@@ -82,6 +82,17 @@ export const schemas = {
     summary: str,
   }),
   accentSet: obj({ items: arr(obj({ text: str, ipa: str, focus: str, tip: str })) }),
+  accentCompare: obj({
+    accents: arr(obj({ name: str, ipa: str, notes: str })),
+    differences: arr(obj({ feature: str, words: str, by_accent: arr(obj({ name: str, description: str })) })),
+    summary: str,
+  }),
+  accentSentence: obj({ sentence: str, why: str }),
+  closest: obj({
+    closest: str,
+    scores: arr(obj({ name: str, score: { type: 'number' } })),
+    evidence: str,
+  }),
   accentEval: obj({
     heard: str,
     overall: { type: 'number' },
@@ -124,6 +135,18 @@ export interface AccentItem {
   ipa: string;
   focus: string;
   tip: string;
+}
+
+export interface AccentComparison {
+  accents: { name: string; ipa: string; notes: string }[];
+  differences: { feature: string; words: string; by_accent: { name: string; description: string }[] }[];
+  summary: string;
+}
+
+export interface ClosestAccent {
+  closest: string;
+  scores: { name: string; score: number }[];
+  evidence: string;
 }
 
 export interface AccentEval {

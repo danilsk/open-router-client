@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { AudioWaveform, GraduationCap, Languages, LayoutGrid, MessageSquare, Settings as SettingsIcon } from 'lucide-react';
+import { AudioWaveform, GraduationCap, Languages, LayoutGrid, MessageSquare, Receipt, Settings as SettingsIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useToasts } from '../lib/toast';
@@ -10,6 +10,7 @@ const NAV = [
   { to: '/learn', label: 'Learn', icon: GraduationCap },
   { to: '/accent', label: 'Accent', icon: AudioWaveform },
   { to: '/models', label: 'Models', icon: LayoutGrid, desktopOnly: true },
+  { to: '/usage', label: 'Usage', icon: Receipt, desktopOnly: true },
   { to: '/settings', label: 'Settings', icon: SettingsIcon },
 ];
 

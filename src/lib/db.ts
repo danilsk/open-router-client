@@ -133,6 +133,19 @@ export interface AccentAttempt {
   audio?: Blob;
 }
 
+export interface LedgerEntry {
+  id: string;
+  ts: number;
+  feature: string;
+  kind: 'chat' | 'tts' | 'stt' | 'image';
+  model: string;
+  cost?: number;
+  genId?: string;
+  tokensIn?: number;
+  tokensOut?: number;
+  chars?: number;
+}
+
 export const db = new Dexie('orc') as Dexie & {
   chats: EntityTable<Chat, 'id'>;
   messages: EntityTable<Message, 'id'>;
@@ -143,6 +156,7 @@ export const db = new Dexie('orc') as Dexie & {
   turns: EntityTable<TutorTurn, 'id'>;
   cards: EntityTable<Card, 'id'>;
   attempts: EntityTable<AccentAttempt, 'id'>;
+  ledger: EntityTable<LedgerEntry, 'id'>;
 };
 
 db.version(1).stores({
@@ -156,6 +170,8 @@ db.version(1).stores({
   cards: 'id, profileId, [profileId+due]',
   attempts: 'id, accent, createdAt',
 });
+
+db.version(2).stores({ ledger: 'id, ts' });
 
 export const uid = () => crypto.randomUUID();
 

@@ -1,5 +1,6 @@
 import { getSettings } from './store';
 import { pcm16ToWav } from './audio';
+import { record } from './ledger';
 
 export const API = 'https://openrouter.ai/api/v1';
 
@@ -90,39 +91,50 @@ export async function* chatStream(body: Record<string, unknown>, signal?: AbortS
   const reader = r.body!.getReader();
   const dec = new TextDecoder();
   let buf = '';
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    let nl: number;
-    while ((nl = buf.indexOf('\n')) >= 0) {
-      const line = buf.slice(0, nl).trim();
-      buf = buf.slice(nl + 1);
-      if (!line.startsWith('data:')) continue;
-      const data = line.slice(5).trim();
-      if (data === '[DONE]') return;
-      let j: any;
-      try {
-        j = JSON.parse(data);
-      } catch {
-        continue;
+  let genId: string | undefined;
+  let logged = false;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let nl: number;
+      while ((nl = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line.startsWith('data:')) continue;
+        const data = line.slice(5).trim();
+        if (data === '[DONE]') return;
+        let j: any;
+        try {
+          j = JSON.parse(data);
+        } catch {
+          continue;
+        }
+        genId ??= j.id;
+        if (j.error) throw new ApiError(j.error.code ?? 500, j.error.message ?? 'Stream error', j.error.metadata);
+        const ch = j.choices?.[0];
+        const d = ch?.delta ?? {};
+        if (d.reasoning) yield { type: 'reasoning', text: d.reasoning };
+        if (d.reasoning_details?.length) yield { type: 'reasoning_details', details: d.reasoning_details };
+        if (d.content) yield { type: 'content', text: d.content };
+        if (d.annotations?.length) {
+          const citations = d.annotations
+            .filter((a: any) => a.type === 'url_citation')
+            .map((a: any) => ({ url: a.url_citation.url, title: a.url_citation.title }));
+          if (citations.length) yield { type: 'citations', citations };
+        }
+        if (d.images?.length) yield { type: 'images', images: d.images.map((i: any) => i.image_url?.url).filter(Boolean) };
+        if (ch?.finish_reason === 'error') throw new ApiError(500, 'The model stopped with an error');
+        if (j.usage) {
+          logged = true;
+          record({ kind: 'chat', model: j.model ?? String(body.model), cost: j.usage.cost, genId, tokensIn: j.usage.prompt_tokens, tokensOut: j.usage.completion_tokens });
+          yield { type: 'usage', usage: j.usage, model: j.model };
+        }
       }
-      if (j.error) throw new ApiError(j.error.code ?? 500, j.error.message ?? 'Stream error', j.error.metadata);
-      const ch = j.choices?.[0];
-      const d = ch?.delta ?? {};
-      if (d.reasoning) yield { type: 'reasoning', text: d.reasoning };
-      if (d.reasoning_details?.length) yield { type: 'reasoning_details', details: d.reasoning_details };
-      if (d.content) yield { type: 'content', text: d.content };
-      if (d.annotations?.length) {
-        const citations = d.annotations
-          .filter((a: any) => a.type === 'url_citation')
-          .map((a: any) => ({ url: a.url_citation.url, title: a.url_citation.title }));
-        if (citations.length) yield { type: 'citations', citations };
-      }
-      if (d.images?.length) yield { type: 'images', images: d.images.map((i: any) => i.image_url?.url).filter(Boolean) };
-      if (ch?.finish_reason === 'error') throw new ApiError(500, 'The model stopped with an error');
-      if (j.usage) yield { type: 'usage', usage: j.usage, model: j.model };
     }
+  } finally {
+    if (!logged && genId) record({ kind: 'chat', model: String(body.model), genId });
   }
 }
 
@@ -136,6 +148,7 @@ export async function chat(body: Record<string, unknown>, signal?: AbortSignal):
   const r = await post('/chat/completions', { ...body, stream: false }, signal);
   const j = await r.json();
   if (j.error) throw new ApiError(j.error.code ?? 500, j.error.message);
+  record({ kind: 'chat', model: j.model ?? String(body.model), cost: j.usage?.cost, genId: j.id, tokensIn: j.usage?.prompt_tokens, tokensOut: j.usage?.completion_tokens });
   const msg = j.choices?.[0]?.message;
   let text = msg?.content ?? '';
   if (Array.isArray(text)) text = text.map((p: any) => p.text ?? '').join('');
@@ -170,6 +183,7 @@ export async function speech(req: SpeechReq, signal?: AbortSignal): Promise<Blob
     }
   }
   if (!r.ok) await fail(r);
+  record({ kind: 'tts', model: req.model, chars: req.input.length, genId: r.headers.get('x-generation-id') ?? undefined });
   const bytes = new Uint8Array(await r.arrayBuffer());
   const ctype = r.headers.get('content-type') ?? '';
   if (format === 'pcm' || ctype.includes('pcm')) {
@@ -189,6 +203,7 @@ export async function transcribeEndpoint(
 ): Promise<{ text: string; usage?: Usage }> {
   const r = await post('/audio/transcriptions', { model, input_audio: { data: b64, format }, ...(language ? { language } : {}) }, signal);
   const j = await r.json();
+  record({ kind: 'stt', model, cost: j.usage?.cost, tokensIn: j.usage?.input_tokens, tokensOut: j.usage?.output_tokens });
   return { text: j.text ?? '', usage: j.usage };
 }
 
@@ -205,6 +220,7 @@ export interface ImageReq {
 export async function generateImages(req: ImageReq, signal?: AbortSignal): Promise<{ images: string[]; usage?: Usage }> {
   const r = await post('/images', req, signal);
   const j = await r.json();
+  record({ kind: 'image', model: req.model, cost: j.usage?.cost, tokensOut: j.usage?.completion_tokens });
   const images = (j.data ?? []).map((d: any) =>
     d.b64_json ? `data:${d.media_type ?? 'image/png'};base64,${d.b64_json}` : d.url,
   );

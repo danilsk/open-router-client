@@ -8,6 +8,7 @@ import { SpeakButton } from '../components/SpeakButton';
 import { VoiceButton } from '../components/VoicePicker';
 import { Badge, Button, Card, Empty, Field, IconButton, PageHeader, ScoreRing, Segmented, Sheet, Toggle, inputCls } from '../components/ui';
 import { currentAccent, evaluate, makeSet, referenceVoice } from '../lib/accent';
+import { AccentCompare } from './AccentCompare';
 import type { AccentEval, AccentItem } from '../lib/ai';
 import { db, uid } from '../lib/db';
 import { ACCENTS } from '../lib/languages';
@@ -33,6 +34,7 @@ export default function AccentPage() {
   const [custom, setCustom] = useState('');
   const [sheet, setSheet] = useState(false);
   const [history, setHistory] = useState(false);
+  const [view, setView] = useState<'practice' | 'compare'>('practice');
   const seen = useRef<string[]>([]);
   const voice = referenceVoice(acc);
   const item = items[idx];
@@ -89,7 +91,7 @@ export default function AccentPage() {
     <div className="flex h-full flex-col">
       <PageHeader
         title="Accent trainer"
-        subtitle={`${acc.flag} ${acc.label}${avg != null ? ` · recent average ${avg}` : ''}`}
+        subtitle={view === 'compare' ? 'Hear one sentence in several accents' : `${acc.flag} ${acc.label}${avg != null ? ` · recent average ${avg}` : ''}`}
         actions={
           <>
             <IconButton label="History" onClick={() => setHistory(true)}>
@@ -101,117 +103,136 @@ export default function AccentPage() {
           </>
         }
       />
-      <div className="scroll-thin flex gap-1.5 overflow-x-auto border-b border-line px-3 py-2">
-        {ACCENTS.map((x) => (
-          <button
-            key={x.id}
-            type="button"
-            onClick={() => s.setAccent({ accentId: x.id })}
-            className={clsx(
-              'shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-[13px]',
-              a.accentId === x.id ? 'border-accent/50 bg-accent/12 text-accent' : 'border-line text-muted hover:text-fg',
-            )}
-          >
-            {x.flag} {x.label}
-          </button>
-        ))}
-        <button
-          type="button"
-          onClick={() => s.setAccent({ accentId: 'custom' })}
-          className={clsx('shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-[13px]', a.accentId === 'custom' ? 'border-accent/50 bg-accent/12 text-accent' : 'border-line text-muted')}
-        >
-          🎯 Other…
-        </button>
+      <div className="flex justify-center border-b border-line px-3 py-2">
+        <Segmented
+          value={view}
+          onChange={setView}
+          className="w-full max-w-xs"
+          options={[
+            { value: 'practice', label: 'Practice' },
+            { value: 'compare', label: 'Compare accents' },
+          ]}
+        />
       </div>
-
-      <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-xl space-y-4 p-4">
-          {a.accentId === 'custom' && (
-            <Field label="Which accent?" hint="Any accent of any language, e.g. “New York English”, “Andalusian Spanish”, “Quebec French”.">
-              <input className={inputCls} value={a.customAccent} onChange={(e) => s.setAccent({ customAccent: e.target.value })} placeholder="Type an accent" />
-            </Field>
-          )}
-          <div className="flex items-center gap-2">
-            <Segmented
-              value={kind}
-              onChange={setKind}
-              options={[
-                { value: 'sentences', label: 'Sentences' },
-                { value: 'pairs', label: 'Word pairs' },
-              ]}
-            />
-            <div className="flex-1" />
-            <Button variant="primary" size="sm" loading={busy} icon={items.length ? <RefreshCw className="size-3.5" /> : <Sparkles className="size-3.5" />} onClick={generate}>
-              {items.length ? 'New set' : 'Make a set'}
-            </Button>
-          </div>
-          <div className="flex gap-2">
-            <input value={custom} onChange={(e) => setCustom(e.target.value)} placeholder="…or practise your own sentence" className={clsx(inputCls, 'h-10')} />
-            <Button
-              variant="subtle"
-              disabled={!custom.trim()}
-              onClick={() => {
-                setItems([{ text: custom.trim(), ipa: '', focus: '', tip: '' }, ...items]);
-                setIdx(0);
-                setResult(null);
-                setMine(null);
-                setCustom('');
-              }}
+      {view === 'compare' ? (
+        <div className="min-h-0 flex-1">
+          <AccentCompare />
+        </div>
+      ) : (
+        <>
+          <div className="scroll-thin flex gap-1.5 overflow-x-auto border-b border-line px-3 py-2">
+            {ACCENTS.map((x) => (
+              <button
+                key={x.id}
+                type="button"
+                onClick={() => s.setAccent({ accentId: x.id })}
+                className={clsx(
+                  'shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-[13px]',
+                  a.accentId === x.id ? 'border-accent/50 bg-accent/12 text-accent' : 'border-line text-muted hover:text-fg',
+                )}
+              >
+                {x.flag} {x.label}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => s.setAccent({ accentId: 'custom' })}
+              className={clsx('shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-[13px]', a.accentId === 'custom' ? 'border-accent/50 bg-accent/12 text-accent' : 'border-line text-muted')}
             >
-              Use
-            </Button>
+              🎯 Other…
+            </button>
           </div>
 
-          {!item ? (
-            <Empty icon={<AudioWaveform className="size-6" />} title={`Sound more ${acc.label}`}>
-              Make a practice set. For each line: listen to the reference voice, record yourself, and get feedback on each sound.
-            </Empty>
-          ) : (
-            <>
-              <Card>
-                <div className="mb-2 flex items-center gap-2 text-xs text-muted">
-                  <span className="tabular-nums">
-                    {idx + 1} / {items.length}
-                  </span>
-                  {item.focus && (
-                    <Badge tone="accent">
-                      <Target className="size-3" />
-                      {item.focus}
-                    </Badge>
-                  )}
-                  <span className="flex-1" />
-                  <IconButton label="Previous" size="sm" disabled={idx === 0} onClick={() => go(-1)}>
-                    <ChevronLeft className="size-4" />
-                  </IconButton>
-                  <IconButton label="Next" size="sm" disabled={idx >= items.length - 1} onClick={() => go(1)}>
-                    <ChevronRight className="size-4" />
-                  </IconButton>
-                </div>
-                <div className="flex items-start gap-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="text-2xl font-medium leading-snug">{item.text}</div>
-                    {item.ipa && <div className="mt-1 font-mono text-sm text-muted">/{item.ipa.replace(/^\/|\/$/g, '')}/</div>}
-                  </div>
-                  <div className="flex flex-col">
-                    <SpeakButton text={item.text} voice={voice} id="acc-ref" size="md" label="Play reference" />
-                    <button type="button" onClick={() => speak(item.text, voice, 'acc-ref', { slow: true })} className="flex size-10 items-center justify-center rounded-xl text-muted hover:bg-surface-2" aria-label="Play slowly">
-                      <Snail className="size-4" />
-                    </button>
-                  </div>
-                </div>
-                {item.tip && <div className="mt-3 rounded-xl bg-surface-2 px-3 py-2 text-sm">💡 {item.tip}</div>}
-              </Card>
-
-              <div className="flex flex-col items-center gap-2 py-1">
-                {judging ? <Loader2 className="size-12 animate-spin text-accent" /> : <MicButton size="xl" label="Record yourself" onAudio={judge} />}
-                <div className="text-xs text-muted">{judging ? 'Analysing your accent…' : 'Listen first, then record yourself'}</div>
+          <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">
+            <div className="mx-auto max-w-xl space-y-4 p-4">
+              {a.accentId === 'custom' && (
+                <Field label="Which accent?" hint="Any accent of any language, e.g. “New York English”, “Andalusian Spanish”, “Quebec French”.">
+                  <input className={inputCls} value={a.customAccent} onChange={(e) => s.setAccent({ customAccent: e.target.value })} placeholder="Type an accent" />
+                </Field>
+              )}
+              <div className="flex items-center gap-2">
+                <Segmented
+                  value={kind}
+                  onChange={setKind}
+                  options={[
+                    { value: 'sentences', label: 'Sentences' },
+                    { value: 'pairs', label: 'Word pairs' },
+                  ]}
+                />
+                <div className="flex-1" />
+                <Button variant="primary" size="sm" loading={busy} icon={items.length ? <RefreshCw className="size-3.5" /> : <Sparkles className="size-3.5" />} onClick={generate}>
+                  {items.length ? 'New set' : 'Make a set'}
+                </Button>
+              </div>
+              <div className="flex gap-2">
+                <input value={custom} onChange={(e) => setCustom(e.target.value)} placeholder="…or practise your own sentence" className={clsx(inputCls, 'h-10')} />
+                <Button
+                  variant="subtle"
+                  disabled={!custom.trim()}
+                  onClick={() => {
+                    setItems([{ text: custom.trim(), ipa: '', focus: '', tip: '' }, ...items]);
+                    setIdx(0);
+                    setResult(null);
+                    setMine(null);
+                    setCustom('');
+                  }}
+                >
+                  Use
+                </Button>
               </div>
 
-              {result && <ResultView r={result} item={item} mine={mine} onNext={idx < items.length - 1 ? () => go(1) : generate} />}
-            </>
-          )}
-        </div>
-      </div>
+              {!item ? (
+                <Empty icon={<AudioWaveform className="size-6" />} title={`Sound more ${acc.label}`}>
+                  Make a practice set. For each line: listen to the reference voice, record yourself, and get feedback on each sound.
+                </Empty>
+              ) : (
+                <>
+                  <Card>
+                    <div className="mb-2 flex items-center gap-2 text-xs text-muted">
+                      <span className="tabular-nums">
+                        {idx + 1} / {items.length}
+                      </span>
+                      {item.focus && (
+                        <Badge tone="accent">
+                          <Target className="size-3" />
+                          {item.focus}
+                        </Badge>
+                      )}
+                      <span className="flex-1" />
+                      <IconButton label="Previous" size="sm" disabled={idx === 0} onClick={() => go(-1)}>
+                        <ChevronLeft className="size-4" />
+                      </IconButton>
+                      <IconButton label="Next" size="sm" disabled={idx >= items.length - 1} onClick={() => go(1)}>
+                        <ChevronRight className="size-4" />
+                      </IconButton>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-2xl font-medium leading-snug">{item.text}</div>
+                        {item.ipa && <div className="mt-1 font-mono text-sm text-muted">/{item.ipa.replace(/^\/|\/$/g, '')}/</div>}
+                      </div>
+                      <div className="flex flex-col">
+                        <SpeakButton text={item.text} voice={voice} id="acc-ref" size="md" label="Play reference" />
+                        <button type="button" onClick={() => speak(item.text, voice, 'acc-ref', { slow: true })} className="flex size-10 items-center justify-center rounded-xl text-muted hover:bg-surface-2" aria-label="Play slowly">
+                          <Snail className="size-4" />
+                        </button>
+                      </div>
+                    </div>
+                    {item.tip && <div className="mt-3 rounded-xl bg-surface-2 px-3 py-2 text-sm">💡 {item.tip}</div>}
+                  </Card>
+
+                  <div className="flex flex-col items-center gap-2 py-1">
+                    {judging ? <Loader2 className="size-12 animate-spin text-accent" /> : <MicButton size="xl" label="Record yourself" onAudio={judge} />}
+                    <div className="text-xs text-muted">{judging ? 'Analysing your accent…' : 'Listen first, then record yourself'}</div>
+                  </div>
+
+                  {result && <ResultView r={result} item={item} mine={mine} onNext={idx < items.length - 1 ? () => go(1) : generate} />}
+                </>
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       <Sheet open={sheet} onClose={() => setSheet(false)} title="Accent settings">
         <div className="space-y-5">

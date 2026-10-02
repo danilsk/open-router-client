@@ -12,6 +12,7 @@ const TeacherPage = lazy(() => import('./pages/TeacherPage'));
 const AccentPage = lazy(() => import('./pages/AccentPage'));
 const ModelsPage = lazy(() => import('./pages/ModelsPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const UsagePage = lazy(() => import('./pages/UsagePage'));
 
 function useTheme() {
   const theme = useSettings((s) => s.theme);
@@ -55,6 +56,7 @@ export default function App() {
               <Route path="/accent" element={<AccentPage />} />
               <Route path="/models" element={<ModelsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/usage" element={<UsagePage />} />
               <Route path="*" element={<Navigate to="/chat" replace />} />
             </Routes>
           </Suspense>

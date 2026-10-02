@@ -62,6 +62,10 @@ export default function SettingsPage() {
                 Top up <ExternalLink className="size-3" />
               </a>
             </div>
+            <Link to="/usage" className="flex items-center justify-between rounded-xl bg-surface-2 px-3 py-2 text-sm hover:bg-surface-3">
+              <span>Cost of each request</span>
+              <span className="text-accent">View history →</span>
+            </Link>
             <div className="flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-2 font-mono text-xs">
               <span className="flex-1 truncate">{s.apiKey.slice(0, 12)}••••••••{s.apiKey.slice(-4)}</span>
               <Button

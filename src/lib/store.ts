@@ -91,6 +91,8 @@ export const useSettings = create<Settings & Actions>()(
         'anthropic/claude-sonnet-5.5',
         'openai/gpt-6.1-sol',
         'deepseek/deepseek-v4.1-flash',
+        'google/gemini-3.8-flash-tts',
+        'microsoft/mai-voice-2.1',
       ],
       recent: {},
       translator: {
@@ -124,7 +126,18 @@ export const useSettings = create<Settings & Actions>()(
           recent: { ...s.recent, [role]: [id, ...(s.recent[role] ?? []).filter((r) => r !== id)].slice(0, 12) },
         })),
     }),
-    { name: 'orc-settings', version: 1 },
+    {
+      name: 'orc-settings',
+      version: 3,
+      migrate: (persisted, version) => {
+        const st = persisted as Partial<Settings>;
+        if (version < 3 && st.favorites) {
+          const voices = ['google/gemini-3.8-flash-tts', 'microsoft/mai-voice-2.1'];
+          st.favorites = [...st.favorites.filter((f) => !voices.includes(f)), ...voices];
+        }
+        return st as Settings & Actions;
+      },
+    },
   ),
 );
 
